@@ -244,18 +244,18 @@ def _run_agent_anthropic(system: str, user: str, model: str) -> str:
 
 
 def _run_agent_openai_compat(system: str, user: str, base_url: str, api_key: str | None, model: str) -> str:
-    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    tools    = _to_openai_tools(TOOL_DEFS)
-    headers  = {"Content-Type": "application/json"}
+    messages  = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    tools     = _to_openai_tools(TOOL_DEFS)
+    headers   = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-
     for _ in range(MAX_TOOL_ROUNDS):
+        payload: dict = {"model": model, "max_tokens": 4096, "messages": messages, "tools": tools, "tool_choice": "auto"}
         try:
             r = requests.post(
                 f"{base_url}/v1/chat/completions",
                 headers=headers,
-                json={"model": model, "max_tokens": 4096, "messages": messages, "tools": tools, "tool_choice": "auto"},
+                json=payload,
                 timeout=120,
             )
             r.raise_for_status()

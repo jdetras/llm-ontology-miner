@@ -71,6 +71,24 @@ def _fmt_request_error(e: requests.RequestException, label: str) -> str:
     return f"LLM request failed ({label}): {str(e).splitlines()[0]}"
 
 
+def _call_ollama_native(base_url: str, system: str, user: str, model: str) -> str:
+    """Use Ollama's native /api/chat endpoint with think=False to bypass thinking-model quirks."""
+    try:
+        r = requests.post(
+            f"{base_url}/api/chat",
+            json={"model": model, "think": False, "stream": False,
+                  "messages": [
+                      {"role": "system", "content": system},
+                      {"role": "user",   "content": user},
+                  ]},
+            timeout=300,
+        )
+        r.raise_for_status()
+    except requests.RequestException as e:
+        raise RuntimeError(_fmt_request_error(e, base_url)) from e
+    return r.json().get("message", {}).get("content") or ""
+
+
 def _call_openai_compat_plain(base_url: str, api_key: str | None, system: str, user: str, model: str) -> str:
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -132,4 +150,6 @@ def call_plain_llm(system: str, user: str, provider_key: str, model: str) -> str
         return "".join(p["text"] for p in parts if "text" in p)
 
     base_url, api_key = resolve_provider_base(provider_key)
+    if provider_key == "ollama":
+        return _call_ollama_native(base_url, system, user, model)
     return _call_openai_compat_plain(base_url, api_key, system, user, model)
