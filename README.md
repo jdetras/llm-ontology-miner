@@ -13,19 +13,19 @@ Extract candidate ontology terms from plant science journal publications using a
 
 ## How it works
 
-### Single-pass (`ontology-miner.mjs`)
+### Single-pass (`ontology_miner.py`)
 1. Provide a publication via DOI or pasted text
 2. The tool fetches the abstract (CrossRef → Europe PMC fallback) or uses your text directly
 3. An LLM analyzes the text and returns structured candidate terms
 4. Results are printed and saved as JSON
 
-### Agentic (`ontology-agent.mjs`)
+### Agentic (`ontology_agent.py`)
 1. Provide a publication via DOI or pasted text
 2. **Phase 1 — Mining agent**: The LLM proposes candidates, then calls the [EBI OLS API](https://www.ebi.ac.uk/ols) to check each one against existing PO/TO terms before surfacing it. Can follow cited DOIs for additional context.
 3. **Phase 2 — Critique agent**: A second LLM pass removes weak, generic, or already-covered candidates
 4. Results are printed and saved as JSON
 
-### Scheduled (`journal-watcher.mjs`)
+### Scheduled (`journal_watcher.py`)
 1. Define a list of journals to monitor in `journals.yml`
 2. The watcher polls CrossRef for papers published since the last run
 3. Each new paper is fed to the agent automatically
@@ -120,6 +120,14 @@ Set a default provider via env var to skip the flag each time:
 ```bash
 LLM_PROVIDER=openai python ontology_miner.py --doi 10.xxxx/xxx
 ```
+
+## Running the tests
+
+```bash
+python -m pytest test_all.py -v
+```
+
+87 tests, no network calls required (all external services are mocked).
 
 ## Output
 
