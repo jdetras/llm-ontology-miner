@@ -9,6 +9,7 @@ Extract candidate ontology terms from plant science journal publications using a
 | `ontology-miner.mjs` | Single-pass | Fast single LLM call — good for quick exploration |
 | `ontology-agent.mjs` | Agentic | Multi-step agent: validates candidates against OLS, follows citations, self-critiques |
 | `journal-watcher.mjs` | Scheduled | Monitors a journal watchlist for new papers and feeds them to the agent automatically |
+| `export-candidates.mjs` | Export | Converts candidate JSON to submission-ready formats for ontology curators |
 
 ## How it works
 
@@ -137,6 +138,46 @@ Each candidate term includes:
 ```
 
 Results are saved to `ontologies/candidates/{slug}-{date}.json` and include the provider and model used.
+
+## Exporting for submission
+
+After mining, convert candidates to curator-ready formats:
+
+```bash
+# List all candidate files
+node export-candidates.mjs --list
+
+# Export all formats (default)
+node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json
+
+# Export a specific format
+node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format obo
+node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format github
+node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format robot
+node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format csv
+```
+
+Outputs are saved to `ontologies/exports/`.
+
+### Output formats
+
+| Format | File | Use |
+|---|---|---|
+| **OBO stanzas** | `.obo` | Paste into a `.obo` file or include in a GitHub PR to the ontology repo |
+| **ROBOT template** | `-robot.tsv` | Import with `robot template` — standard batch submission for OBO Foundry ontologies |
+| **GitHub NTR** | `-ntr.md` | Copy each term block and open a New Term Request issue in the ontology's GitHub repo |
+| **CSV** | `.csv` | Human review in a spreadsheet before submission |
+
+### Where to submit
+
+| Ontology | GitHub Issues |
+|---|---|
+| PO — Plant Ontology | https://github.com/Planteome/plant-ontology/issues/new |
+| TO — Trait Ontology | https://github.com/Planteome/plant-trait-ontology/issues/new |
+| PECO | https://github.com/Planteome/plant-experimental-conditions-ontology/issues/new |
+| FLOPO | https://github.com/flora-phenotype-ontology/flopoontology/issues/new |
+
+> **Note:** Placeholder IDs (`PO:NEWTERM_001`) must be replaced with real accessions assigned by ontology curators. Always review `definition_draft` and `suggested_parent` before submitting.
 
 ## Ontology targets
 
