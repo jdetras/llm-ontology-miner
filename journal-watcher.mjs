@@ -68,22 +68,42 @@ if (!existsSync(JOURNALS_FILE)) {
 }
 
 const config = yaml(readFileSync(JOURNALS_FILE, 'utf8'));
-const journals    = config.journals ?? [];
+const rawJournals = config.journals ?? [];
 const scanCfg     = config.scan ?? {};
-const lookbackDays = scanCfg.lookback_days ?? 7;
+const lookbackDays  = scanCfg.lookback_days ?? 7;
 const maxPerJournal = scanCfg.max_per_journal ?? 20;
 const provider    = scanCfg.provider ?? process.env.LLM_PROVIDER ?? 'anthropic';
 const modelFlag   = scanCfg.model ? ['--model', scanCfg.model] : [];
 const ontology    = scanCfg.ontology ?? 'both';
 
+// Validate journal entries — skip those with missing ISSN, fix invalid focus values
+const VALID_FOCUS = new Set(['po', 'to', 'both']);
+const journals = rawJournals.filter((j, idx) => {
+  if (!j.issn) {
+    console.warn(`journals.yml: entry #${idx + 1} ("${j.name ?? 'unnamed'}") is missing 'issn' — skipped`);
+    return false;
+  }
+  if (j.focus && !VALID_FOCUS.has(j.focus)) {
+    console.warn(`journals.yml: "${j.name ?? j.issn}" has invalid focus "${j.focus}" (must be po, to, or both) — defaulting to 'both'`);
+    j.focus = 'both';
+  }
+  return true;
+});
+
 // ---------------------------------------------------------------------------
 // History management
 // ---------------------------------------------------------------------------
 
+const MAX_FAILURES = 3; // stop retrying a DOI after this many agent failures
+
 function loadHistory() {
-  if (!existsSync(HISTORY_FILE)) return { last_scan: null, processed_dois: {} };
-  try { return JSON.parse(readFileSync(HISTORY_FILE, 'utf8')); }
-  catch { return { last_scan: null, processed_dois: {} }; }
+  if (!existsSync(HISTORY_FILE)) return { last_scan: null, processed_dois: {}, failed_dois: {} };
+  try {
+    const h = JSON.parse(readFileSync(HISTORY_FILE, 'utf8'));
+    h.failed_dois ??= {};
+    return h;
+  }
+  catch { return { last_scan: null, processed_dois: {}, failed_dois: {} }; }
 }
 
 function saveHistory(history) {
@@ -95,8 +115,17 @@ function markProcessed(history, doi) {
   history.processed_dois[doi.toLowerCase()] = new Date().toISOString();
 }
 
+function markFailed(history, doi) {
+  const key = doi.toLowerCase();
+  history.failed_dois[key] = (history.failed_dois[key] ?? 0) + 1;
+}
+
 function isProcessed(history, doi) {
   return !!history.processed_dois[doi.toLowerCase()];
+}
+
+function isBlocked(history, doi) {
+  return (history.failed_dois[doi.toLowerCase()] ?? 0) >= MAX_FAILURES;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +230,7 @@ for (const journal of journals) {
     continue;
   }
 
-  const newPapers = papers.filter(p => !isProcessed(history, p.doi));
+  const newPapers = papers.filter(p => !isProcessed(history, p.doi) && !isBlocked(history, p.doi));
   console.log(`${papers.length} recent, ${newPapers.length} new`);
   totalNew += newPapers.length;
 
@@ -212,10 +241,17 @@ for (const journal of journals) {
 
     try {
       await runAgent(paper.doi, journal.focus);
-      markProcessed(history, paper.doi);
-      totalProcessed++;
+      if (!DRY_RUN) {
+        markProcessed(history, paper.doi);
+        totalProcessed++;
+      }
     } catch (e) {
       console.warn(`  ⚠ Agent failed: ${e.message}`);
+      if (!DRY_RUN) {
+        markFailed(history, paper.doi);
+        const failures = history.failed_dois[paper.doi.toLowerCase()];
+        if (failures >= MAX_FAILURES) console.warn(`  ✗ Blocked after ${MAX_FAILURES} failures — will not retry`);
+      }
     }
 
     // Save history after each paper so progress isn't lost on error

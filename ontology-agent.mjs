@@ -8,7 +8,7 @@
  *   3. Optionally fetches cited papers for context (fetch_abstract tool)
  *   4. Runs a self-critique pass to remove weak candidates
  *
- * Tool use is supported for: anthropic, openai, gemini, mistral, ollama (llama3.1+),
+ * Tool use is supported for: anthropic, openai, gemini, mistral, ollama (llama3.2+),
  * openai-compat (if the endpoint supports it). Falls back to single-pass on failure.
  *
  * Usage:
@@ -38,7 +38,7 @@ const PROVIDERS = {
   openai:         { label: 'OpenAI',                      defaultModel: 'gpt-4o',                 envKey: 'OPENAI_API_KEY'     },
   gemini:         { label: 'Google Gemini',               defaultModel: 'gemini-2.0-flash',       envKey: 'GEMINI_API_KEY'     },
   mistral:        { label: 'Mistral AI',                  defaultModel: 'mistral-large-latest',   envKey: 'MISTRAL_API_KEY'    },
-  ollama:         { label: 'Ollama (local)',               defaultModel: 'llama3.1',               envKey: null                 },
+  ollama:         { label: 'Ollama (local)',               defaultModel: 'llama3.2',               envKey: null                 },
   'openai-compat':{ label: 'OpenAI-compatible endpoint',  defaultModel: process.env.OPENAI_COMPAT_MODEL ?? 'default', envKey: null },
 };
 
@@ -165,6 +165,7 @@ async function searchOntology(term, onto) {
   const url = `https://www.ebi.ac.uk/ols4/api/search?q=${encodeURIComponent(term)}&ontology=${ontoParam}&type=class&rows=5&exact=false&lang=en`;
   try {
     const res = await fetch(url);
+    if (res.status === 429) return { found: null, error: 'OLS rate limited (429) — result unverified, do not treat as absent' };
     if (!res.ok) return { found: false, error: `OLS API ${res.status}` };
     const hits = (await res.json()).response?.docs ?? [];
     if (!hits.length) return { found: false, message: `No existing terms match "${term}" in ${onto.toUpperCase()}` };
@@ -287,22 +288,67 @@ async function runAgentGemini(systemPrompt, userMessage) {
 
     contents.push({ role: 'model', parts });
     const responses = await Promise.all(funcCalls.map(async p => ({
-      functionResponse: { name: p.functionCall.name, response: { content: JSON.stringify(await executeTool(p.functionCall.name, p.functionCall.args)) } },
+      functionResponse: { name: p.functionCall.name, response: await executeTool(p.functionCall.name, p.functionCall.args) },
     })));
-    contents.push({ role: 'function', parts: responses });
+    contents.push({ role: 'user', parts: responses });
   }
   throw new Error('Agent loop exceeded max rounds');
 }
 
 async function runAgent(systemPrompt, userMessage) {
   switch (providerKey) {
-    case 'anthropic':    return runAgentAnthropic(systemPrompt, userMessage);
-    case 'gemini':       return runAgentGemini(systemPrompt, userMessage);
-    case 'openai':       return runAgentOpenAICompat('https://api.openai.com', process.env.OPENAI_API_KEY, systemPrompt, userMessage);
-    case 'mistral':      return runAgentOpenAICompat('https://api.mistral.ai', process.env.MISTRAL_API_KEY, systemPrompt, userMessage);
-    case 'ollama':       return runAgentOpenAICompat('http://localhost:11434', null, systemPrompt, userMessage);
-    case 'openai-compat': return runAgentOpenAICompat(process.env.OPENAI_COMPAT_BASE_URL, process.env.OPENAI_COMPAT_API_KEY ?? null, systemPrompt, userMessage);
+    case 'anthropic':     return runAgentAnthropic(systemPrompt, userMessage);
+    case 'gemini':        return runAgentGemini(systemPrompt, userMessage);
+    case 'openai':        return runAgentOpenAICompat(systemPrompt, userMessage, 'https://api.openai.com', process.env.OPENAI_API_KEY);
+    case 'mistral':       return runAgentOpenAICompat(systemPrompt, userMessage, 'https://api.mistral.ai', process.env.MISTRAL_API_KEY);
+    case 'ollama':        return runAgentOpenAICompat(systemPrompt, userMessage, 'http://localhost:11434', null);
+    case 'openai-compat': return runAgentOpenAICompat(systemPrompt, userMessage, process.env.OPENAI_COMPAT_BASE_URL, process.env.OPENAI_COMPAT_API_KEY ?? null);
     default: throw new Error(`Unknown provider: ${providerKey}`);
+  }
+}
+
+// Single-shot LLM call with no tools — used for the critique pass.
+async function callPlainLLM(systemPrompt, userMessage) {
+  switch (providerKey) {
+    case 'anthropic': {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 4096, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] }),
+      });
+      if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
+      const data = await res.json();
+      return data.content?.find(c => c.type === 'text')?.text ?? '';
+    }
+    case 'gemini': {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+      const res = await fetch(url, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ system_instruction: { parts: [{ text: systemPrompt }] }, contents: [{ role: 'user', parts: [{ text: userMessage }] }], generationConfig: { maxOutputTokens: 4096 } }),
+      });
+      if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.filter(p => p.text).map(p => p.text).join('') ?? '';
+    }
+    default: {
+      const baseUrl = providerKey === 'openai' ? 'https://api.openai.com'
+        : providerKey === 'mistral' ? 'https://api.mistral.ai'
+        : providerKey === 'ollama'  ? 'http://localhost:11434'
+        : process.env.OPENAI_COMPAT_BASE_URL;
+      const apiKey = providerKey === 'openai' ? process.env.OPENAI_API_KEY
+        : providerKey === 'mistral' ? process.env.MISTRAL_API_KEY
+        : providerKey === 'ollama'  ? null
+        : process.env.OPENAI_COMPAT_API_KEY ?? null;
+      const headers = { 'content-type': 'application/json' };
+      if (apiKey) headers['authorization'] = `Bearer ${apiKey}`;
+      const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }] }),
+      });
+      if (!res.ok) throw new Error(`${baseUrl} ${res.status}: ${await res.text()}`);
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content ?? '';
+    }
   }
 }
 
@@ -438,7 +484,7 @@ console.log(`  → ${minedCandidates.length} candidate(s) passed OLS check`);
 // Phase 2: Self-critique pass (single call, no tools)
 console.log(`\n[Phase 2] Critique — removing weak or duplicative terms...`);
 const { system: critiqueSystem, user: critiqueUser } = buildCritiquePrompt(minedCandidates, pub.text);
-const critiqueRaw = await runAgent(critiqueSystem, critiqueUser);
+const critiqueRaw = await callPlainLLM(critiqueSystem, critiqueUser);
 const finalCandidates = extractJson(critiqueRaw) ?? minedCandidates;
 console.log(`  → ${finalCandidates.length} candidate(s) survived critique`);
 
