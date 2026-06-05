@@ -139,6 +139,53 @@ Each candidate term includes:
 
 Results are saved to `ontologies/candidates/{slug}-{date}.json` and include the provider and model used.
 
+## Curator role — human in the loop
+
+This tool is a **literature triage assistant**, not a replacement for expert curation. The LLM surfaces candidates; a human curator makes all final decisions.
+
+### What the tool does automatically
+
+- Fetches abstracts from CrossRef and Europe PMC
+- Searches EBI OLS to flag terms that already exist in PO/TO
+- Runs a self-critique pass to remove generic or weakly-evidenced candidates
+- Assigns a preliminary confidence score (`high / medium / low`)
+- Drafts definitions and suggests parent terms from the paper's language
+
+### What curators must do
+
+| Step | Curator responsibility |
+|---|---|
+| **Review** | Read every candidate against the source paper — the LLM can hallucinate context |
+| **Validate OLS** | Confirm the OLS check result; search manually for near-synonyms the agent may have missed |
+| **Refine definitions** | Rewrite `definition_draft` in standard ontology style: a genus-differentia structure, free of hedges and first-person language |
+| **Resolve parent** | Replace `suggested_parent` with a verified OBO accession (e.g. `PO:0020144`) — never commit a term with a plain-text parent |
+| **Replace IDs** | Assign real accessions (replacing `PO:NEWTERM_001` placeholders), following the ontology's ID minting policy |
+| **Cross-reference** | Add `xref:` lines to related terms, synonyms from other ontologies, and the source DOI |
+| **Submit** | Open a GitHub NTR issue or PR in the target ontology's repo; tag the relevant editors |
+
+### Confidence scores
+
+The LLM confidence score is a **triage signal**, not a quality guarantee:
+
+- `high` — term appears multiple times with consistent usage, clear definition, no OLS match found
+- `medium` — plausible candidate but limited evidence or some OLS overlap; needs more scrutiny
+- `low` — borderline: single occurrence, vague usage, or partial OLS match; consider discarding
+
+Curators should always read the `source_sentence` and `ols_search_result` fields, regardless of score.
+
+### Recommended workflow
+
+```
+1. journal-watcher scans for new papers         (automated)
+2. ontology-agent mines and validates candidates (automated)
+3. Curator reviews CSV or NTR markdown          (human)
+4. Curator refines definitions and resolves IDs  (human)
+5. Curator submits GitHub NTR issue or PR       (human)
+6. Ontology editors review and merge            (human)
+```
+
+The tool handles steps 1–2. Steps 3–6 require domain expertise that no LLM can substitute for.
+
 ## Exporting for submission
 
 After mining, convert candidates to curator-ready formats:
