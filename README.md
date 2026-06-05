@@ -2,12 +2,33 @@
 
 Extract candidate ontology terms from plant science journal publications using any LLM. Surfaces terms that could enrich the [Plant Ontology (PO)](http://plantontology.org) and [Trait Ontology (TO)](https://www.cropontology.org) from literature — with draft definitions, suggested parent terms, synonyms, and curator rationale.
 
+## Tools
+
+| Script | Mode | Description |
+|---|---|---|
+| `ontology-miner.mjs` | Single-pass | Fast single LLM call — good for quick exploration |
+| `ontology-agent.mjs` | Agentic | Multi-step agent: validates candidates against OLS, follows citations, self-critiques |
+| `journal-watcher.mjs` | Scheduled | Monitors a journal watchlist for new papers and feeds them to the agent automatically |
+
 ## How it works
 
+### Single-pass (`ontology-miner.mjs`)
 1. Provide a publication via DOI or pasted text
 2. The tool fetches the abstract (CrossRef → Europe PMC fallback) or uses your text directly
-3. An LLM analyzes the text as an ontology curator and returns structured candidate terms
-4. Results are printed to the console and saved as JSON for downstream review
+3. An LLM analyzes the text and returns structured candidate terms
+4. Results are printed and saved as JSON
+
+### Agentic (`ontology-agent.mjs`)
+1. Provide a publication via DOI or pasted text
+2. **Phase 1 — Mining agent**: The LLM proposes candidates, then calls the [EBI OLS API](https://www.ebi.ac.uk/ols) to check each one against existing PO/TO terms before surfacing it. Can follow cited DOIs for additional context.
+3. **Phase 2 — Critique agent**: A second LLM pass removes weak, generic, or already-covered candidates
+4. Results are printed and saved as JSON
+
+### Scheduled (`journal-watcher.mjs`)
+1. Define a list of journals to monitor in `journals.yml`
+2. The watcher polls CrossRef for papers published since the last run
+3. Each new paper is fed to the agent automatically
+4. History is tracked to avoid reprocessing
 
 ## Installation
 
@@ -22,26 +43,55 @@ Node.js 18+ required.
 
 ## Usage
 
+### Single-pass miner
+
 ```bash
-# From a DOI
 node ontology-miner.mjs --doi 10.1093/jxb/eraa002
-
-# From pasted text
 node ontology-miner.mjs --text "Paste abstract or full text here"
-
-# From a local file
 node ontology-miner.mjs --file ./papers/my-paper.txt
-
-# Target a specific ontology (default: both)
-node ontology-miner.mjs --doi 10.xxxx/xxx --ontology po
-node ontology-miner.mjs --doi 10.xxxx/xxx --ontology to
-
-# Choose a provider
+node ontology-miner.mjs --doi 10.xxxx/xxx --ontology po   # po | to | both
 node ontology-miner.mjs --doi 10.xxxx/xxx --provider openai
-node ontology-miner.mjs --doi 10.xxxx/xxx --provider ollama --model llama3.2
-
-# List available providers
 node ontology-miner.mjs --providers
+```
+
+### Agentic miner (recommended)
+
+Same flags as the single-pass miner:
+
+```bash
+node ontology-agent.mjs --doi 10.1093/jxb/eraa002
+node ontology-agent.mjs --doi 10.xxxx/xxx --ontology to --provider openai
+node ontology-agent.mjs --text "abstract text" --provider ollama --model llama3.1
+```
+
+The agent will print tool call activity as it runs:
+```
+[Phase 1] Mining — agent validating candidates against OLS...
+  → tool: search_ontology({"term":"leaf rolling","ontology":"to"})
+  → tool: search_ontology({"term":"coleoptile elongation zone","ontology":"po"})
+  → 4 candidate(s) passed OLS check
+[Phase 2] Critique — removing weak or duplicative terms...
+  → 3 candidate(s) survived critique
+```
+
+### Scheduled journal watcher
+
+```bash
+# 1. Set up your journal watchlist
+cp journals.example.yml journals.yml
+# edit journals.yml to add/remove journals and set your preferred provider
+
+# 2. Test with a dry run (no LLM calls)
+node journal-watcher.mjs --dry-run
+
+# 3. Run now
+node journal-watcher.mjs
+
+# 4. Check what has been processed
+node journal-watcher.mjs --status
+
+# 5. Set up automated scheduling
+node journal-watcher.mjs --cron   # prints crontab line to copy
 ```
 
 ## Supported LLM providers

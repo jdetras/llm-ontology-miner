@@ -1,0 +1,74 @@
+# journals.example.yml — copy to journals.yml and customize
+#
+# The journal watcher polls CrossRef for new papers from these journals
+# and feeds them to ontology-agent.mjs automatically.
+#
+# Find ISSNs at: https://portal.issn.org  or  https://www.crossref.org/titleList/
+
+scan:
+  lookback_days: 7          # how many days back to check for new papers
+  max_per_journal: 20       # max papers to queue per journal per run
+  provider: anthropic       # LLM provider for the agent (see --providers)
+  model: ""                 # leave empty to use provider default
+  ontology: both            # po | to | both
+
+journals:
+  # --- Core plant biology ---
+  - name: "Journal of Experimental Botany"
+    issn: "0022-0957"
+    focus: both
+
+  - name: "Plant Physiology"
+    issn: "0032-0889"
+    focus: both
+
+  - name: "The Plant Cell"
+    issn: "1040-4651"
+    focus: both
+
+  - name: "Plant, Cell & Environment"
+    issn: "0140-7791"
+    focus: to
+
+  - name: "New Phytologist"
+    issn: "0028-646X"
+    focus: both
+
+  - name: "Plant Journal"
+    issn: "0960-7412"
+    focus: both
+
+  # --- Crop science & agronomy ---
+  - name: "Field Crops Research"
+    issn: "0378-4290"
+    focus: to
+
+  - name: "Crop Science"
+    issn: "0011-183X"
+    focus: to
+
+  - name: "Plant Breeding"
+    issn: "0179-9541"
+    focus: to
+
+  - name: "Euphytica"
+    issn: "0014-2336"
+    focus: to
+
+  # --- Phenotyping & traits ---
+  - name: "Frontiers in Plant Science"
+    issn: "1664-462X"
+    focus: both
+
+  - name: "Plant Phenomics"
+    issn: "2643-6515"
+    focus: to
+
+  # --- Root & anatomy ---
+  - name: "Journal of Plant Physiology"
+    issn: "0176-1617"
+    focus: po
+
+  - name: "Planta"
+    issn: "0032-0935"
+    focus: po
