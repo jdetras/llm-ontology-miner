@@ -72,7 +72,7 @@ const PROVIDERS = {
   'openai-compat': {
     label: 'OpenAI-compatible endpoint',
     defaultModel: process.env.OPENAI_COMPAT_MODEL ?? 'default',
-    envKey: 'OPENAI_COMPAT_API_KEY',
+    envKey: null, // key is optional — keyless endpoints (vLLM, LM Studio) are supported
   },
 };
 
@@ -95,13 +95,18 @@ if (args.includes('--providers')) {
 
 function getArg(flag) {
   const i = args.indexOf(flag);
-  return i !== -1 && args[i + 1] ? args[i + 1] : null;
+  const value = i !== -1 ? args[i + 1] : undefined;
+  return value && !value.startsWith('--') ? value : null;
 }
 
 const doiArg      = getArg('--doi');
 const textArg     = getArg('--text');
 const fileArg     = getArg('--file');
 const ontology    = getArg('--ontology') ?? 'both';
+if (!['po', 'to', 'both'].includes(ontology)) {
+  console.error(`Error: --ontology must be one of: po, to, both (got: "${ontology}")`);
+  process.exit(1);
+}
 const providerKey = getArg('--provider') ?? process.env.LLM_PROVIDER ?? 'anthropic';
 const modelArg    = getArg('--model');
 
@@ -123,16 +128,14 @@ if (!PROVIDERS[providerKey]) {
 const providerCfg = PROVIDERS[providerKey];
 const model = modelArg ?? providerCfg.defaultModel;
 
-// Validate API key for providers that need one
-if (providerCfg.envKey) {
-  const key = process.env[providerCfg.envKey];
-  if (!key) {
-    console.error(`Error: ${providerCfg.envKey} is not set.`);
-    if (providerKey === 'openai-compat') {
-      console.error('Also set OPENAI_COMPAT_BASE_URL to your endpoint base URL.');
-    }
-    process.exit(1);
-  }
+// Validate required env vars before any network I/O
+if (providerCfg.envKey && !process.env[providerCfg.envKey]) {
+  console.error(`Error: ${providerCfg.envKey} is not set.`);
+  process.exit(1);
+}
+if (providerKey === 'openai-compat' && !process.env.OPENAI_COMPAT_BASE_URL) {
+  console.error('Error: OPENAI_COMPAT_BASE_URL is not set.');
+  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +160,7 @@ async function fetchByDoi(doi) {
 
   if (!abstract) {
     console.log('  No abstract in CrossRef — trying Europe PMC...');
-    const pmcUrl = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=doi:${doi}&resultType=core&format=json`;
+    const pmcUrl = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent('doi:' + doi)}&resultType=core&format=json`;
     const pmcRes = await fetch(pmcUrl);
     if (pmcRes.ok) {
       abstract = (await pmcRes.json()).resultList?.result?.[0]?.abstractText ?? '';
@@ -182,7 +185,14 @@ async function fetchByDoi(doi) {
 
 async function getPublication() {
   if (doiArg)  return fetchByDoi(doiArg);
-  if (fileArg) return { source: 'file', file: fileArg, text: readFileSync(fileArg, 'utf8') };
+  if (fileArg) {
+    try {
+      return { source: 'file', file: fileArg, text: readFileSync(fileArg, 'utf8') };
+    } catch (e) {
+      console.error(`Error: could not read file "${fileArg}": ${e.message}`);
+      process.exit(1);
+    }
+  }
   return { source: 'text', text: textArg };
 }
 
@@ -249,14 +259,27 @@ Do not include generic terms already well-established in PO/TO.`;
 }
 
 function extractJson(raw) {
+  // 1. Try fenced code block (non-greedy — correct by construction)
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const inline = raw.match(/(\[[\s\S]*\])/);
-  const str = (fenced?.[1] ?? inline?.[1] ?? raw).trim();
-  try {
-    return JSON.parse(str);
-  } catch {
-    return [{ _raw: raw }];
+  if (fenced?.[1]) {
+    try { return JSON.parse(fenced[1].trim()); } catch { /* fall through */ }
   }
+  // 2. Walk each '[' position and bracket-match to find the first valid JSON array
+  let start = 0;
+  while (true) {
+    const i = raw.indexOf('[', start);
+    if (i === -1) break;
+    let depth = 0, j = i;
+    for (; j < raw.length; j++) {
+      if (raw[j] === '[') depth++;
+      else if (raw[j] === ']') { if (--depth === 0) break; }
+    }
+    if (depth === 0) {
+      try { return JSON.parse(raw.slice(i, j + 1)); } catch { /* try next position */ }
+    }
+    start = i + 1;
+  }
+  return [{ _raw: raw }];
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +327,7 @@ async function callOpenAICompat(baseUrl, apiKey, system, user) {
 
 async function callGemini(system, user) {
   const apiKey = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -356,7 +379,7 @@ function printSummary(candidates) {
   console.log(`Candidate terms found: ${candidates.length}  (high: ${byConf.high.length}  medium: ${byConf.medium.length}  low: ${byConf.low.length})`);
   console.log('─'.repeat(60));
 
-  for (const c of candidates) {
+  for (const c of [...byConf.high, ...byConf.medium, ...byConf.low]) {
     const badge = c.confidence === 'high' ? '●' : c.confidence === 'medium' ? '◐' : '○';
     console.log(`\n${badge} [${c.ontology ?? '?'}] ${c.term}`);
     if (c.namespace)        console.log(`  Namespace : ${c.namespace}`);
@@ -396,20 +419,28 @@ if (!candidates.length) {
 
 // Save
 mkdirSync(OUT_DIR, { recursive: true });
-const date = new Date().toISOString().slice(0, 10);
-const slug = pub.doi ? slugify(pub.doi) : pub.title ? slugify(pub.title) : 'pasted-text';
+const now = new Date();
+const date = now.toISOString().slice(0, 10);
+const slug = pub.doi
+  ? slugify(pub.doi)
+  : pub.title
+    ? slugify(pub.title)
+    : pub.file
+      ? slugify(pub.file.split('/').pop().replace(/\.[^.]+$/, ''))
+      : slugify((pub.text ?? 'text').slice(0, 50));
 const outPath = join(OUT_DIR, `${slug}-${date}.json`);
 
+const realCount = candidates[0]?._raw ? 0 : candidates.length;
 writeFileSync(outPath, JSON.stringify({
-  mined_at: new Date().toISOString(),
+  mined_at: now.toISOString(),
   provider: providerKey,
   model,
   source: pub.source,
   doi: pub.doi ?? null,
   title: pub.title ?? null,
   ontology_target: ontology,
-  candidate_count: candidates.length,
-  candidates,
+  candidate_count: realCount,
+  candidates: realCount > 0 ? candidates : [],
 }, null, 2));
 
 console.log(`\nSaved → ontologies/candidates/${slug}-${date}.json`);
