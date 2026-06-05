@@ -1,0 +1,29 @@
+{
+  "name": "llm-ontology-miner",
+  "version": "1.0.0",
+  "description": "Extract candidate ontology terms from plant science literature using any LLM",
+  "type": "module",
+  "bin": {
+    "ontology-miner": "./ontology-miner.mjs"
+  },
+  "scripts": {
+    "start": "node ontology-miner.mjs",
+    "providers": "node ontology-miner.mjs --providers"
+  },
+  "dependencies": {
+    "dotenv": "^17.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ontology",
+    "plant-ontology",
+    "trait-ontology",
+    "bioinformatics",
+    "llm",
+    "nlp",
+    "text-mining"
+  ],
+  "license": "MIT"
+}
