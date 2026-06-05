@@ -90,8 +90,52 @@ Results are saved to `ontologies/candidates/{slug}-{date}.json` and include the 
 
 ## Ontology targets
 
-- **PO — Plant Ontology**: anatomy (leaf, root, epidermis), morphology (shapes, surfaces), developmental stages (germination, flowering, senescence)
-- **TO — Trait Ontology**: yield traits, stress tolerance, morphological, biochemical, and agronomic traits
+The `--ontology` flag currently accepts `po`, `to`, or `both`. The reference landscape below covers the full set of accepted plant and agricultural ontologies — useful for knowing which namespace a candidate term belongs to, or for extending the tool to target additional ontologies.
+
+### Core plant ontologies — [OBO Foundry](https://obofoundry.org) / [Planteome](https://planteome.org)
+
+| ID | Name | Covers |
+|---|---|---|
+| **PO** | [Plant Ontology](http://plantontology.org) | Anatomy, morphology, developmental stages |
+| **TO** | [Trait Ontology](https://www.cropontology.org) | Plant traits and phenotypes |
+| **PECO** | [Plant Experimental Conditions Ontology](https://www.ebi.ac.uk/ols/ontologies/peco) | Growth conditions, treatments, stresses |
+| **PPO** | [Plant Phenology Ontology](https://www.plantphenology.org) | Phenological stages (leafing, flowering timing) |
+| **GO** | [Gene Ontology](https://geneontology.org) | Biological process, molecular function, cellular component |
+
+### Crop-specific — [Crop Ontology](https://cropontology.org) / CGIAR
+
+| ID | Name | Covers |
+|---|---|---|
+| **CO_321** | Wheat Crop Ontology | Wheat-specific variables and traits |
+| **CO_322** | Maize Crop Ontology | Maize-specific variables and traits |
+| **CO_340** | Rice Crop Ontology | Rice-specific variables and traits |
+| **CO_356** | Potato Crop Ontology | Potato-specific variables and traits |
+| **GRO** | [Gramene Crop Ontology](https://www.gramene.org) | Grass and cereal crops |
+
+### Phenotype and morphology
+
+| ID | Name | Covers |
+|---|---|---|
+| **FLOPO** | [Flora Phenotype Ontology](https://www.ebi.ac.uk/ols/ontologies/flopo) | Plant morphological phenotypes |
+| **OBA** | [Ontology of Biological Attributes](https://www.ebi.ac.uk/ols/ontologies/oba) | Measurable biological attributes |
+
+### Supporting ontologies (commonly cross-referenced)
+
+| ID | Name | Covers |
+|---|---|---|
+| **CHEBI** | [Chemical Entities of Biological Interest](https://www.ebi.ac.uk/chebi) | Metabolites, compounds, biochemicals |
+| **ENVO** | [Environment Ontology](https://sites.google.com/site/environmentontology) | Habitats, abiotic conditions, biomes |
+| **NCBITaxon** | [NCBI Taxonomy](https://www.ncbi.nlm.nih.gov/taxonomy) | Species and taxon identifiers |
+| **RO** | [Relations Ontology](https://www.obofoundry.org/ontology/ro.html) | is_a, part_of, regulates, and other relations |
+| **AGROVOC** | [FAO Agricultural Thesaurus](https://agrovoc.fao.org) | Broad agricultural vocabulary (SKOS, not strict OWL) |
+
+### Registries to browse
+
+- **[OBO Foundry](https://obofoundry.org)** — curated, peer-reviewed biological ontologies
+- **[Planteome](https://planteome.org)** — plant-specific ontology collection
+- **[AgroPortal](https://agroportal.lirmm.fr)** — agricultural and food ontologies
+- **[Crop Ontology](https://cropontology.org)** — CGIAR crop trait variables
+- **[OLS (EBI)](https://www.ebi.ac.uk/ols)** — general ontology search across all life sciences
 
 ## License
 
