@@ -6,10 +6,10 @@ Extract candidate ontology terms from plant science journal publications using a
 
 | Script | Mode | Description |
 |---|---|---|
-| `ontology-miner.mjs` | Single-pass | Fast single LLM call — good for quick exploration |
-| `ontology-agent.mjs` | Agentic | Multi-step agent: validates candidates against OLS, follows citations, self-critiques |
-| `journal-watcher.mjs` | Scheduled | Monitors a journal watchlist for new papers and feeds them to the agent automatically |
-| `export-candidates.mjs` | Export | Converts candidate JSON to submission-ready formats for ontology curators |
+| `ontology_miner.py` | Single-pass | Fast single LLM call — good for quick exploration |
+| `ontology_agent.py` | Agentic | Multi-step agent: validates candidates against OLS, follows citations, self-critiques |
+| `journal_watcher.py` | Scheduled | Monitors a journal watchlist for new papers and feeds them to the agent automatically |
+| `export_candidates.py` | Export | Converts candidate JSON to submission-ready formats for ontology curators |
 
 ## How it works
 
@@ -36,23 +36,25 @@ Extract candidate ontology terms from plant science journal publications using a
 ```bash
 git clone https://github.com/jdetras/llm-ontology-miner.git
 cd llm-ontology-miner
-npm install
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 cp .env.example .env   # add your API key(s)
 ```
 
-Node.js 18+ required.
+Python 3.10+ required. After the first setup, activate the venv (`source .venv/bin/activate`) before running any commands.
 
 ## Usage
 
 ### Single-pass miner
 
 ```bash
-node ontology-miner.mjs --doi 10.1093/jxb/eraa002
-node ontology-miner.mjs --text "Paste abstract or full text here"
-node ontology-miner.mjs --file ./papers/my-paper.txt
-node ontology-miner.mjs --doi 10.xxxx/xxx --ontology po   # po | to | both
-node ontology-miner.mjs --doi 10.xxxx/xxx --provider openai
-node ontology-miner.mjs --providers
+python ontology_miner.py --doi 10.1093/jxb/eraa002
+python ontology_miner.py --text "Paste abstract or full text here"
+python ontology_miner.py --file ./papers/my-paper.txt
+python ontology_miner.py --doi 10.xxxx/xxx --ontology po   # po | to | both
+python ontology_miner.py --doi 10.xxxx/xxx --provider openai
+python ontology_miner.py --providers
 ```
 
 ### Agentic miner (recommended)
@@ -60,9 +62,9 @@ node ontology-miner.mjs --providers
 Same flags as the single-pass miner:
 
 ```bash
-node ontology-agent.mjs --doi 10.1093/jxb/eraa002
-node ontology-agent.mjs --doi 10.xxxx/xxx --ontology to --provider openai
-node ontology-agent.mjs --text "abstract text" --provider ollama --model llama3.1
+python ontology_agent.py --doi 10.1093/jxb/eraa002
+python ontology_agent.py --doi 10.xxxx/xxx --ontology to --provider openai
+python ontology_agent.py --text "abstract text" --provider ollama --model llama3.2
 ```
 
 The agent will print tool call activity as it runs:
@@ -83,16 +85,16 @@ cp journals.example.yml journals.yml
 # edit journals.yml to add/remove journals and set your preferred provider
 
 # 2. Test with a dry run (no LLM calls)
-node journal-watcher.mjs --dry-run
+python journal_watcher.py --dry-run
 
 # 3. Run now
-node journal-watcher.mjs
+python journal_watcher.py
 
 # 4. Check what has been processed
-node journal-watcher.mjs --status
+python journal_watcher.py --status
 
 # 5. Set up automated scheduling
-node journal-watcher.mjs --cron   # prints crontab line to copy
+python journal_watcher.py --cron   # prints crontab lines to copy
 ```
 
 ## Supported LLM providers
@@ -109,14 +111,14 @@ node journal-watcher.mjs --cron   # prints crontab line to copy
 Override the model for any provider with `--model`:
 
 ```bash
-node ontology-miner.mjs --doi 10.xxxx/xxx --provider anthropic --model claude-opus-4-8
-node ontology-miner.mjs --text "..." --provider ollama --model gemma3:12b
+python ontology_miner.py --doi 10.xxxx/xxx --provider anthropic --model claude-opus-4-8
+python ontology_miner.py --text "..." --provider ollama --model gemma3:12b
 ```
 
 Set a default provider via env var to skip the flag each time:
 
 ```bash
-LLM_PROVIDER=openai node ontology-miner.mjs --doi 10.xxxx/xxx
+LLM_PROVIDER=openai python ontology_miner.py --doi 10.xxxx/xxx
 ```
 
 ## Output
@@ -192,16 +194,16 @@ After mining, convert candidates to curator-ready formats:
 
 ```bash
 # List all candidate files
-node export-candidates.mjs --list
+python export_candidates.py --list
 
 # Export all formats (default)
-node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json
+python export_candidates.py --input ontologies/candidates/my-paper-2026-06-05.json
 
 # Export a specific format
-node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format obo
-node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format github
-node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format robot
-node export-candidates.mjs --input ontologies/candidates/my-paper-2026-06-05.json --format csv
+python export_candidates.py --input ontologies/candidates/my-paper-2026-06-05.json --format obo
+python export_candidates.py --input ontologies/candidates/my-paper-2026-06-05.json --format github
+python export_candidates.py --input ontologies/candidates/my-paper-2026-06-05.json --format robot
+python export_candidates.py --input ontologies/candidates/my-paper-2026-06-05.json --format csv
 ```
 
 Outputs are saved to `ontologies/exports/`.
